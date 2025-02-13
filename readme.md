@@ -12,8 +12,8 @@ A Node.js backend that fetches **all messages** from a Discord channel using the
 
 ### 1️⃣ Clone the Repository
 ```sh
-git clone https://github.com/YOUR_GITHUB_USERNAME/discord-message-fetcher.git
-cd discord-message-fetcher
+git clone https://github.com/Suhaib3100/discord-bot-admin
+cd discord-bot-admin
 ```
 
 ### 2️⃣ Install Dependencies
