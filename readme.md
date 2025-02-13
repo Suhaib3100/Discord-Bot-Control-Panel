@@ -2,7 +2,7 @@
 
 # Discord Server Management Dashboard
 
-![Project Logo](https://via.placeholder.com/150) <!-- Add a logo if you have one -->
+![Project Logo]([https://via.placeholder.com/150](https://imgur.com/a/LY5yLF4)) <!-- Add a logo if you have one -->
 
 A comprehensive and user-friendly dashboard built with **Next.js** and **Express.js** to manage Discord servers efficiently. This project provides an attractive and intuitive interface for server administrators to view messages, manage roles, kick/ban members, and access audit logs.
 
