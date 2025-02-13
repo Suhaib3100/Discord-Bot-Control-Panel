@@ -45,7 +45,7 @@ app.get("/api/servers/:serverId/channels", async (req, res) => {
     res.json(channels);
 });
 
-// ✅ Get all messages from a specific channel
+// ✅ Get messages from a specific channel (with lazy loading)
 app.get("/api/servers/:serverId/channels/:channelId/messages", async (req, res) => {
     const guild = client.guilds.cache.get(req.params.serverId);
     if (!guild) return res.status(404).json({ error: "Server not found" });
@@ -54,32 +54,27 @@ app.get("/api/servers/:serverId/channels/:channelId/messages", async (req, res) 
     if (!channel || !channel.isTextBased()) return res.status(404).json({ error: "Channel not found or not a text channel" });
 
     try {
-        let allMessages = [];
-        let lastMessageId = null;
-        let hasMoreMessages = true;
+        const limit = parseInt(req.query.limit) || 50; // Default to 50 messages per request
+        const before = req.query.before || null; // ID of the message to fetch messages before
 
-        while (hasMoreMessages) {
-            const options = { limit: 100 };
-            if (lastMessageId) {
-                options.before = lastMessageId;
-            }
-
-            const messages = await channel.messages.fetch(options);
-            if (messages.size === 0) {
-                hasMoreMessages = false;
-            } else {
-                allMessages = allMessages.concat(Array.from(messages.values()));
-                lastMessageId = messages.last().id;
-            }
+        const options = { limit };
+        if (before) {
+            options.before = before;
         }
 
-        const messageData = allMessages.map(msg => ({
+        const messages = await channel.messages.fetch(options);
+        const messageData = messages.map(msg => ({
+            id: msg.id, // Include message ID for pagination
             author: msg.author.username,
             content: msg.content,
-            attachments: msg.attachments.map(attachment => attachment.url)
+            attachments: msg.attachments.map(attachment => attachment.url),
+            timestamp: msg.createdAt.toISOString() // Include the message creation date
         }));
 
-        res.json(messageData);
+        res.json({
+            messages: Array.from(messageData.values()),
+            hasMore: messages.size === limit // Indicates if there are more messages to load
+        });
     } catch (err) {
         res.status(500).json({ error: "Failed to fetch messages", details: err.message });
     }
