@@ -38,6 +38,19 @@ export default function ManagementPage() {
   const [newRole, setNewRole] = useState({ name: '', color: '#FFFFFF' });
   const [memberAction, setMemberAction] = useState<{ type: string; memberId: string; reason: string } | null>(null);
 
+  // Fetch servers on mount
+  useEffect(() => {
+    fetchServers();
+  }, []);
+
+  // Fetch members and roles when a server is selected
+  useEffect(() => {
+    if (selectedServer) {
+      fetchMembers(selectedServer);
+      fetchRoles(selectedServer);
+    }
+  }, [selectedServer]);
+
   const fetchServers = async () => {
     try {
       const response = await fetch("http://localhost:5000/api/servers");
@@ -49,6 +62,28 @@ export default function ManagementPage() {
     }
   };
 
+  const fetchMembers = async (serverId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/servers/${serverId}/members`);
+      const data = await response.json();
+      setMembers(data);
+    } catch (error) {
+      console.error("Error fetching members:", error);
+      toast.error("Failed to fetch members");
+    }
+  };
+
+  const fetchRoles = async (serverId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/servers/${serverId}/roles`);
+      const data = await response.json();
+      setRoles(data);
+    } catch (error) {
+      console.error("Error fetching roles:", error);
+      toast.error("Failed to fetch roles");
+    }
+  };
+
   const handleCreateRole = async () => {
     if (!selectedServer) return;
 
@@ -56,14 +91,14 @@ export default function ManagementPage() {
       const response = await fetch(`http://localhost:5000/api/servers/${selectedServer}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRole)
+        body: JSON.stringify(newRole),
       });
 
       if (!response.ok) throw new Error('Failed to create role');
 
       toast.success('Role created successfully');
       setNewRole({ name: '', color: '#FFFFFF' });
-      // Refresh roles list
+      fetchRoles(selectedServer); // Refresh roles list
     } catch (error) {
       console.error("Error creating role:", error);
       toast.error("Failed to create role");
@@ -75,13 +110,13 @@ export default function ManagementPage() {
 
     try {
       const response = await fetch(`http://localhost:5000/api/servers/${selectedServer}/roles/${roleId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       if (!response.ok) throw new Error('Failed to delete role');
 
       toast.success('Role deleted successfully');
-      // Refresh roles list
+      fetchRoles(selectedServer); // Refresh roles list
     } catch (error) {
       console.error("Error deleting role:", error);
       toast.error("Failed to delete role");
@@ -92,15 +127,19 @@ export default function ManagementPage() {
     if (!memberAction || !selectedServer) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/servers/${selectedServer}/members/${memberAction.memberId}/${memberAction.type}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: memberAction.reason })
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/servers/${selectedServer}/members/${memberAction.memberId}/${memberAction.type}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: memberAction.reason }),
+        }
+      );
 
       if (!response.ok) throw new Error('Action failed');
 
       toast.success(`Member ${memberAction.type}ed successfully`);
+      fetchMembers(selectedServer); // Refresh members list
     } catch (error) {
       console.error(`Error ${memberAction.type}ing member:`, error);
       toast.error(`Failed to ${memberAction.type} member`);
@@ -108,10 +147,6 @@ export default function ManagementPage() {
       setMemberAction(null);
     }
   };
-
-  useEffect(() => {
-    fetchServers();
-  }, []);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-background to-accent/5">
@@ -136,7 +171,9 @@ export default function ManagementPage() {
                 key={server.id}
                 onClick={() => setSelectedServer(server.id)}
                 className={`w-12 h-12 rounded-full bg-white/5 hover:bg-white/10 transition-all duration-300 flex items-center justify-center group relative hover:scale-105 ${
-                  selectedServer === server.id ? "bg-white/20 ring-2 ring-purple-500 ring-offset-2 ring-offset-background" : ""
+                  selectedServer === server.id
+                    ? "bg-white/20 ring-2 ring-purple-500 ring-offset-2 ring-offset-background"
+                    : ""
                 }`}
               >
                 <div className="text-white/90 text-sm font-semibold">
