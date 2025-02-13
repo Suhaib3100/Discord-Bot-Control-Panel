@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquare, Server, Hash, Crown, Shield, Sparkles } from "lucide-react";
+import { MessageSquare, Server, Hash, Crown, Shield, Sparkles, UserX, Ban, Settings, Users, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 interface Server {
   id: string;
@@ -14,32 +19,41 @@ interface Server {
 interface Channel {
   id: string;
   name: string;
+  type: number;
 }
 
 interface Message {
-  id: string;
   author: string;
   content: string;
-  attachment?: string;
+  attachments: string[];
+}
+
+interface AuditLog {
+  action: string;
+  user: string;
+  target: string;
+  reason: string;
 }
 
 export default function Home() {
   const [servers, setServers] = useState<Server[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showAuditLogs, setShowAuditLogs] = useState(false);
+  const [memberAction, setMemberAction] = useState<{ type: string; memberId: string; reason: string } | null>(null);
 
   const fetchServers = async () => {
     try {
       const response = await fetch("http://localhost:5000/api/servers");
-      if (!response.ok) throw new Error("Failed to fetch servers");
       const data = await response.json();
-      setServers(Array.isArray(data) ? data : []);
+      setServers(data);
     } catch (error) {
       console.error("Error fetching servers:", error);
-      setServers([]); // Reset to empty array on error
+      toast.error("Failed to fetch servers");
     }
   };
 
@@ -49,37 +63,74 @@ export default function Home() {
       setChannels([]);
       setMessages([]);
       setSelectedChannel(null);
-
+      
       const response = await fetch(`http://localhost:5000/api/servers/${serverId}/channels`);
-      if (!response.ok) throw new Error("Failed to fetch channels");
       const data = await response.json();
-      setChannels(Array.isArray(data) ? data : []);
+      setChannels(data.filter((channel: Channel) => channel.type === 0)); // Only show text channels
     } catch (error) {
       console.error("Error fetching channels:", error);
-      setChannels([]); // Reset to empty array on error
+      toast.error("Failed to fetch channels");
     }
   };
 
   const fetchMessages = async (serverId: string, channelId: string, channelName: string) => {
     try {
       setLoading(true);
-      setSelectedChannel({ id: channelId, name: channelName });
-
+      setSelectedChannel({ id: channelId, name: channelName, type: 0 });
+      
       const response = await fetch(`http://localhost:5000/api/servers/${serverId}/channels/${channelId}/messages`);
-      if (!response.ok) throw new Error("Failed to fetch messages");
       const data = await response.json();
-      setMessages(Array.isArray(data) ? data : []); // Ensure messages is always an array
+      setMessages(data);
     } catch (error) {
       console.error("Error fetching messages:", error);
-      setMessages([]); // Reset to empty array on error
+      toast.error("Failed to fetch messages");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAuditLogs = async (serverId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/servers/${serverId}/audit-logs`);
+      const data = await response.json();
+      setAuditLogs(data);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      toast.error("Failed to fetch audit logs");
+    }
+  };
+
+  const handleMemberAction = async () => {
+    if (!memberAction || !selectedServer) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/servers/${selectedServer}/members/${memberAction.memberId}/${memberAction.type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: memberAction.reason })
+      });
+
+      if (!response.ok) throw new Error('Action failed');
+
+      toast.success(`Member ${memberAction.type}ed successfully`);
+      fetchAuditLogs(selectedServer);
+    } catch (error) {
+      console.error(`Error ${memberAction.type}ing member:`, error);
+      toast.error(`Failed to ${memberAction.type} member`);
+    } finally {
+      setMemberAction(null);
     }
   };
 
   useEffect(() => {
     fetchServers();
   }, []);
+
+  useEffect(() => {
+    if (selectedServer && showAuditLogs) {
+      fetchAuditLogs(selectedServer);
+    }
+  }, [selectedServer, showAuditLogs]);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-background to-accent/5">
@@ -120,30 +171,157 @@ export default function Home() {
         </ScrollArea>
       </div>
 
-      {/* Channels Sidebar */}
+      {/* Channels and Management Sidebar */}
       <div className="w-64 bg-black/10 backdrop-blur-lg flex flex-col border-r border-white/10">
-        <div className="p-4 border-b border-white/10">
-          <h2 className="font-semibold text-lg flex items-center gap-2">
-            <Shield className="w-5 h-5 text-purple-500" />
-            <span>Channels</span>
-          </h2>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2">
-            {channels.map((channel) => (
-              <button
-                key={channel.id}
-                onClick={() => fetchMessages(selectedServer!, channel.id, channel.name)}
-                className={`w-full px-3 py-2 rounded-lg hover:bg-white/5 flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors ${
-                  selectedChannel?.id === channel.id ? "bg-white/10 text-white" : ""
-                }`}
-              >
-                <Hash className="w-4 h-4" />
-                <span>{channel.name}</span>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
+        {selectedServer && (
+          <>
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-lg flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-purple-500" />
+                  <span>Channels</span>
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowAuditLogs(!showAuditLogs)}
+                  className="hover:bg-white/10"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full bg-white/5 border-white/10 hover:bg-white/10"
+                      onClick={() => setMemberAction({ type: 'kick', memberId: '', reason: '' })}
+                    >
+                      <UserX className="w-4 h-4 mr-2" />
+                      Kick
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="bg-background/95 backdrop-blur-xl border-white/10">
+                    <DialogHeader>
+                      <DialogTitle>Kick Member</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Label>Member ID</Label>
+                        <Input
+                          placeholder="Enter member ID"
+                          value={memberAction?.memberId || ''}
+                          onChange={(e) => setMemberAction(prev => prev ? { ...prev, memberId: e.target.value } : null)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Reason</Label>
+                        <Input
+                          placeholder="Enter reason"
+                          value={memberAction?.reason || ''}
+                          onChange={(e) => setMemberAction(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                        />
+                      </div>
+                      <Button
+                        className="w-full"
+                        onClick={handleMemberAction}
+                        disabled={!memberAction?.memberId}
+                      >
+                        Kick Member
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full bg-white/5 border-white/10 hover:bg-white/10"
+                      onClick={() => setMemberAction({ type: 'ban', memberId: '', reason: '' })}
+                    >
+                      <Ban className="w-4 h-4 mr-2" />
+                      Ban
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="bg-background/95 backdrop-blur-xl border-white/10">
+                    <DialogHeader>
+                      <DialogTitle>Ban Member</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Label>Member ID</Label>
+                        <Input
+                          placeholder="Enter member ID"
+                          value={memberAction?.memberId || ''}
+                          onChange={(e) => setMemberAction(prev => prev ? { ...prev, memberId: e.target.value } : null)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Reason</Label>
+                        <Input
+                          placeholder="Enter reason"
+                          value={memberAction?.reason || ''}
+                          onChange={(e) => setMemberAction(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                        />
+                      </div>
+                      <Button
+                        className="w-full"
+                        onClick={handleMemberAction}
+                        disabled={!memberAction?.memberId}
+                      >
+                        Ban Member
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+
+            <ScrollArea className="flex-1">
+              {showAuditLogs ? (
+                <div className="p-4 space-y-4">
+                  <h3 className="font-semibold text-sm text-white/70 flex items-center gap-2 mb-4">
+                    <Users className="w-4 h-4" />
+                    Audit Logs
+                  </h3>
+                  {auditLogs.map((log, index) => (
+                    <Card key={index} className="p-3 bg-white/5 border-white/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-white/90">{log.action}</span>
+                        <span className="text-xs text-white/50">{log.user}</span>
+                      </div>
+                      <div className="text-xs text-white/70">
+                        Target: {log.target}
+                      </div>
+                      <div className="text-xs text-white/50 italic">
+                        {log.reason}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-2">
+                  {channels.map((channel) => (
+                    <button
+                      key={channel.id}
+                      onClick={() => fetchMessages(selectedServer, channel.id, channel.name)}
+                      className={`w-full px-3 py-2 rounded-lg hover:bg-white/5 flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors ${
+                        selectedChannel?.id === channel.id ? "bg-white/10 text-white" : ""
+                      }`}
+                    >
+                      <Hash className="w-4 h-4" />
+                      <span>{channel.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        )}
       </div>
 
       {/* Messages Area */}
@@ -158,7 +336,7 @@ export default function Home() {
           <div className="p-4 space-y-4">
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-purple-500 border-t-transparent" />
+                <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
               </div>
             ) : messages.length === 0 ? (
               <div className="text-white/50 text-center py-8 flex flex-col items-center gap-4">
@@ -181,13 +359,16 @@ export default function Home() {
                       </span>
                     </div>
                     <div className="text-sm text-white/80">{msg.content}</div>
-                    {msg.attachment && (
-                      <div className="mt-2">
-                        <img
-                          src={msg.attachment}
-                          alt="Attachment"
-                          className="max-w-[300px] rounded-lg border border-white/10"
-                        />
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mt-2 grid gap-2 grid-cols-1 sm:grid-cols-2">
+                        {msg.attachments.map((url, i) => (
+                          <img
+                            key={i}
+                            src={url}
+                            alt="Attachment"
+                            className="max-w-[300px] rounded-lg border border-white/10"
+                          />
+                        ))}
                       </div>
                     )}
                   </div>
